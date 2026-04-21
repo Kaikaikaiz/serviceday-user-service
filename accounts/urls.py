@@ -1,14 +1,17 @@
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 
 urlpatterns = [
-    path('register/',                   views.RegisterView.as_view(),       name='register'),
-    path('login/',                      views.LoginView.as_view(),          name='login'),
-    path('logout/',                     views.LogoutView.as_view(),         name='logout'),
-    path('profile/',                    views.UserProfileView.as_view(),    name='profile'),
-    path('forgot-password/',            views.ForgotPasswordView.as_view(), name='forgot-password'),
-    path('reset-password/',             views.ResetPasswordView.as_view(),  name='reset-password'),
-    path('token/refresh/',              TokenRefreshView.as_view(),         name='token-refresh'),
-    path('<int:pk>/',                   views.UserDetailView.as_view(),     name='user-detail'),
+    # ── Template views ────────────────────────────────
+    path('login/',                      views.user_login,      name='login'),
+    path('logout/',                     views.user_logout,     name='logout'),
+    path('register/',                   views.user_register,   name='register'),
+    path('forgot-password/',            views.forgot_password, name='forgot-password'),
+    path('reset-password/<str:token>/', views.reset_password,  name='reset-password'),
+
+    # ── API views (called by other microservices) ─────
+    path('users/',                      views.api_user_list,       name='api-user-list'),
+    path('users/me/',                   views.api_me,              name='api-me'),
+    path('users/register/',             views.api_register,        name='api-register'),
+    path('users/employees/emails/',     views.api_employee_emails, name='api-employee-emails'),
 ]

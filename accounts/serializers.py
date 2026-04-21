@@ -1,74 +1,50 @@
-from django.contrib.auth.models import User
 from rest_framework import serializers
-from accounts.services.account_service import AccountService
+from django.contrib.auth.models import User, Group
 
 
-class RegisterSerializer(serializers.Serializer):
-    username   = serializers.CharField(max_length=150)
-    email      = serializers.EmailField()
-    first_name = serializers.CharField(max_length=150)
-    last_name  = serializers.CharField(max_length=150)
-    password1  = serializers.CharField(write_only=True)
-    password2  = serializers.CharField(write_only=True)
-
-    def validate(self, data):
-        error = AccountService.validate_registration(
-            data['username'],
-            data['email'],
-            data['password1'],
-            data['password2'],
-        )
-        if error:
-            raise serializers.ValidationError(error)
-        return data
-
-    def create(self, validated_data):
-        return AccountService.register_user(
-            username   = validated_data['username'],
-            email      = validated_data['email'],
-            first_name = validated_data['first_name'],
-            last_name  = validated_data['last_name'],
-            password   = validated_data['password1'],
-        )
-
-
-class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
-    password = serializers.CharField(write_only=True)
-
-
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
+    """Read-only serializer for user data."""
     role = serializers.SerializerMethodField()
 
     class Meta:
         model  = User
-        fields = [
-            'id', 'username', 'email',
-            'first_name', 'last_name',
-            'is_active', 'date_joined', 'role'
-        ]
-        read_only_fields = ['id', 'date_joined']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'role']
 
     def get_role(self, obj):
-        if obj.groups.filter(name="Administrator").exists() or obj.is_staff:
-            return "admin"
-        return "employee"
+        if obj.groups.filter(name='Administrator').exists() or obj.is_staff:
+            return 'admin'
+        return 'employee'
 
 
-class ForgotPasswordSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+class RegisterSerializer(serializers.Serializer):
+    """Topic 7.4a — Input validation for registration."""
+    username   = serializers.CharField(max_length=150)
+    email      = serializers.EmailField()
+    first_name = serializers.CharField(max_length=100)
+    last_name  = serializers.CharField(max_length=100)
+    password1  = serializers.CharField(min_length=8, write_only=True)
+    password2  = serializers.CharField(min_length=8, write_only=True)
 
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already taken.")
+        return value
 
-class ResetPasswordSerializer(serializers.Serializer):
-    token     = serializers.CharField()
-    password1 = serializers.CharField(write_only=True)
-    password2 = serializers.CharField(write_only=True)
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already registered.")
+        return value
 
     def validate(self, data):
-        error = AccountService.validate_password_reset(
-            data['password1'],
-            data['password2'],
-        )
-        if error:
-            raise serializers.ValidationError(error)
+        if data['password1'] != data['password2']:
+            raise serializers.ValidationError({"password2": "Passwords do not match."})
+        if not any(c.isupper() for c in data['password1']):
+            raise serializers.ValidationError({"password1": "Password must contain at least one uppercase letter."})
+        if not any(c.isdigit() for c in data['password1']):
+            raise serializers.ValidationError({"password1": "Password must contain at least one number."})
         return data
+
+
+class EmployeeEmailListSerializer(serializers.Serializer):
+    """Returns list of employee emails for notification-service."""
+    emails = serializers.ListField(child=serializers.EmailField())

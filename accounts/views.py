@@ -1,224 +1,206 @@
-from rest_framework              import status
-from rest_framework.response     import Response
-from rest_framework.views        import APIView
-from rest_framework.permissions  import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken
+"""
+User Service — views.py
+Contains both:
+- Template views (login, logout, register, password reset)
+- API views (for other microservices to call)
+"""
+
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+from django.utils import timezone
 
 from accounts.services.account_service import AccountService
-from .serializers import (
-    RegisterSerializer,
-    LoginSerializer,
-    UserProfileSerializer,
-    ForgotPasswordSerializer,
-    ResetPasswordSerializer,
-)
+
+# ── REST API imports ──────────────────────────────────────────
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth.models import User
+from .serializers import UserSerializer, RegisterSerializer
 
 
-# -------------------------------------------------------------------------
-# Register
-# POST /api/users/register/
-# Preserves all AccountService.validate_registration() rules:
-#   - uppercase, digit, length, username/email uniqueness
-#   - assigns Employee group
-# -------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────
+# Template Views (Topic 9.1 — Session handling)
+# ─────────────────────────────────────────────────────────────
 
-class RegisterView(APIView):
-    permission_classes = [AllowAny]
+def user_login(request):
+    if request.user.is_authenticated:
+        if request.user.groups.filter(name="Administrator").exists():
+            return redirect('ngo:admin_dashboard')
+        return redirect('ngo:ngo-list')
 
-    def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'error': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        user = serializer.save()
-        return Response(
-            {
-                'message': 'Account created successfully.',
-                'user': UserProfileSerializer(user).data,
-            },
-            status=status.HTTP_201_CREATED
+    next_url = request.GET.get('next', '')
+
+    if request.method == "POST":
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        next_url = request.POST.get('next', '')
+
+        user = AccountService.login_user(request, username, password)
+
+        if user:
+            # Topic 7.2b — rotate session ID on login
+            request.session.cycle_key()
+
+            is_admin = user.groups.filter(name="Administrator").exists() or user.is_staff
+
+            # Topic 9.1a — store admin session metadata
+            if is_admin:
+                request.session['role']       = 'admin'
+                request.session['login_time'] = timezone.now().isoformat()
+                request.session['username']   = user.username
+            # Topic 9.1b — store employee session metadata
+            else:
+                request.session['role']       = 'employee'
+                request.session['login_time'] = timezone.now().isoformat()
+                request.session['username']   = user.username
+
+            if next_url:
+                return redirect(next_url)
+            if is_admin:
+                return redirect('ngo:admin_dashboard')
+            return redirect('ngo:ngo-list')
+
+        messages.error(request, "Invalid username or password.")
+
+    return render(request, "accounts/login.html", {'next': next_url})
+
+
+@require_POST
+@login_required
+def user_logout(request):
+    request.session.flush()
+    AccountService.logout_user(request)
+    return redirect('login')
+
+
+def user_register(request):
+    if request.user.is_authenticated:
+        return redirect('ngo:ngo-list')
+
+    if request.method == "POST":
+        username   = request.POST.get('username', '').strip()
+        email      = request.POST.get('email', '').strip()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name  = request.POST.get('last_name', '').strip()
+        password1  = request.POST.get('password1', '')
+        password2  = request.POST.get('password2', '')
+
+        error = AccountService.validate_registration(username, email, password1, password2)
+        if error:
+            messages.error(request, error)
+        else:
+            AccountService.register_user(username, email, first_name, last_name, password1)
+            messages.success(request, "Account created! Please log in.")
+            return redirect('login')
+
+    return render(request, "accounts/register.html")
+
+
+def forgot_password(request):
+    if request.method == "POST":
+        email = request.POST.get('email', '').strip()
+        if not email:
+            messages.error(request, "Please enter your email address.")
+        else:
+            user = AccountService.get_user_by_email(email)
+            if user:
+                token = AccountService.generate_reset_token(user)
+                return redirect('reset-password', token=token)
+            messages.info(request, "If that email is registered, a reset link has been sent.")
+
+    return render(request, "accounts/forgot_password.html")
+
+
+def reset_password(request, token):
+    user = AccountService.resolve_reset_token(token)
+
+    if user is None:
+        messages.error(request, "This reset link is invalid or has expired.")
+        return redirect('forgot-password')
+
+    if request.method == "POST":
+        error = AccountService.validate_password_reset(
+            request.POST.get('password1', ''),
+            request.POST.get('password2', ''),
         )
+        if error:
+            messages.error(request, error)
+        else:
+            AccountService.reset_password(user, request.POST.get('password1'))
+            messages.success(request, "Password reset successful. Please log in.")
+            return redirect('login')
+
+    return render(request, "accounts/reset_password.html", {'reset_user': user})
 
 
-# -------------------------------------------------------------------------
-# Login
-# POST /api/users/login/
-# Returns JWT access + refresh tokens + user profile + role
-# Role is group-based (Administrator group or is_staff = admin)
-# -------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────
+# API Views — called by other microservices
+# ─────────────────────────────────────────────────────────────
 
-class LoginView(APIView):
-    permission_classes = [AllowAny]
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def api_register(request):
+    """
+    POST /api/v1/users/register/
+    Register a new employee account.
+    Topic 7.4a — input validation via serializer.
+    """
+    serializer = RegisterSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request):
-        serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'error': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = AccountService.login_user(
-            request,
-            serializer.validated_data['username'],
-            serializer.validated_data['password'],
-        )
-
-        if not user:
-            return Response(
-                {'error': 'Invalid username or password.'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        refresh = RefreshToken.for_user(user)
-
-        return Response({
-            'access':  str(refresh.access_token),
-            'refresh': str(refresh),
-            'user':    UserProfileSerializer(user).data,
-        })
+    data = serializer.validated_data
+    user = AccountService.register_user(
+        data['username'],
+        data['email'],
+        data['first_name'],
+        data['last_name'],
+        data['password1'],
+    )
+    return Response(
+        UserSerializer(user).data,
+        status=status.HTTP_201_CREATED
+    )
 
 
-# -------------------------------------------------------------------------
-# Logout
-# POST /api/users/logout/
-# Blacklists the refresh token so it can't be reused
-# -------------------------------------------------------------------------
-
-class LogoutView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        refresh_token = request.data.get('refresh')
-        if not refresh_token:
-            return Response(
-                {'error': 'Refresh token is required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response({'message': 'Logged out successfully.'})
-        except Exception:
-            return Response(
-                {'error': 'Invalid or already expired token.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_me(request):
+    """
+    GET /api/v1/users/me/
+    Returns current logged-in user info.
+    Used by gateway to display user profile.
+    """
+    return Response(UserSerializer(request.user).data)
 
 
-# -------------------------------------------------------------------------
-# Profile
-# GET  /api/users/profile/  — view own profile
-# PUT  /api/users/profile/  — update own profile
-# -------------------------------------------------------------------------
-
-class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        return Response(UserProfileSerializer(request.user).data)
-
-    def put(self, request):
-        serializer = UserProfileSerializer(
-            request.user,
-            data=request.data,
-            partial=True
-        )
-        if not serializer.is_valid():
-            return Response(
-                {'error': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        serializer.save()
-        return Response(serializer.data)
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def api_employee_emails(request):
+    """
+    GET /api/v1/users/employees/emails/
+    Returns all employee emails.
+    Called by notification-service to get broadcast recipients.
+    """
+    emails = list(
+        User.objects
+        .filter(is_active=True, is_staff=False)
+        .values_list('email', flat=True)
+    )
+    return Response({'emails': emails})
 
 
-# -------------------------------------------------------------------------
-# Forgot Password
-# POST /api/users/forgot-password/
-# 6.5 — doesn't reveal whether the email exists
-# Returns token directly (in production you'd email the link instead)
-# -------------------------------------------------------------------------
-
-class ForgotPasswordView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = ForgotPasswordSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'error': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        email = serializer.validated_data['email']
-        user  = AccountService.get_user_by_email(email)
-
-        # 6.5 — always return the same response regardless of whether
-        #        the email exists to avoid user enumeration
-        if not user:
-            return Response({
-                'message': 'If that email is registered, a reset link has been sent.'
-            })
-
-        token = AccountService.generate_reset_token(user)
-
-        # In production: send token via email
-        # For development: return token directly so you can test in Postman
-        return Response({
-            'message': 'Password reset token generated.',
-            'token':   token,      # ← remove this line in production
-        })
-
-
-# -------------------------------------------------------------------------
-# Reset Password
-# POST /api/users/reset-password/
-# 6.5 — token is signed + expires after 1 hour (AccountService.RESET_TIMEOUT)
-# -------------------------------------------------------------------------
-
-class ResetPasswordView(APIView):
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        serializer = ResetPasswordSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'error': serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        token = serializer.validated_data['token']
-        user  = AccountService.resolve_reset_token(token)
-
-        if user is None:
-            return Response(
-                {'error': 'This reset link is invalid or has expired.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        AccountService.reset_password(user, serializer.validated_data['password1'])
-        return Response({'message': 'Password reset successful.'})
-
-
-# -------------------------------------------------------------------------
-# User Detail  (internal — for api-gateway or other services)
-# GET /api/users/<id>/
-# Used by the gateway to look up a user by ID from a JWT sub claim
-# -------------------------------------------------------------------------
-
-class UserDetailView(APIView):
-    permission_classes = [AllowAny]   # lock down with internal secret later
-
-    def get(self, request, pk):
-        from django.contrib.auth.models import User
-        try:
-            user = User.objects.get(pk=pk)
-            return Response(UserProfileSerializer(user).data)
-        except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def api_user_list(request):
+    """
+    GET /api/v1/users/
+    Returns all users. Admin only.
+    """
+    users      = User.objects.filter(is_active=True)
+    serializer = UserSerializer(users, many=True)
+    return Response(serializer.data)
