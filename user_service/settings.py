@@ -96,3 +96,10 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS':  True,
 }
+
+NOTIFICATION_SERVICE_URL = os.environ.get(
+    'NOTIFICATION_SERVICE_URL', 'http://127.0.0.1:8004'
+)
+GATEWAY_URL = os.environ.get(
+    'GATEWAY_URL', 'http://127.0.0.1:8000'
+)

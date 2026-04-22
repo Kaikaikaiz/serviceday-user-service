@@ -3,6 +3,9 @@ from django.contrib.auth.models import User, Group
 from django.core import signing
 
 
+from user_service import settings
+import requests
+
 class AccountService:
 
     RESET_SALT    = "password-reset"
@@ -30,6 +33,10 @@ class AccountService:
 
     @staticmethod
     def register_user(username, email, first_name, last_name, password):
+        from django.contrib.auth.models import User, Group
+        from django.core import signing
+
+        # is_active=False — cannot login until email verified
         user = User.objects.create_user(
             username   = username,
             email      = email,
@@ -37,10 +44,57 @@ class AccountService:
             last_name  = last_name,
             password   = password,
             is_staff   = False,
+            is_active  = False,       # ← CHANGED
         )
+
         employee_group, _ = Group.objects.get_or_create(name="Employee")
         user.groups.add(employee_group)
+
+        # generate verification token (reuse same signing mechanism)
+        token = signing.dumps(user.pk, salt='email-verification')
+
+        # build verification URL pointing to gateway
+        gateway_url      = getattr(settings, 'GATEWAY_URL')
+        verification_url = f"{gateway_url}/verify-email/{token}/"
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # In register_user, replace the try/except:
+        try:
+            response = requests.post(
+                settings.NOTIFICATION_SERVICE_URL + '/api/v1/notifications/send-verification/',
+                json={
+                    'email':            email,
+                    'name':             first_name or username,
+                    'verification_url': verification_url,
+                },
+                timeout=5,
+            )
+            logger.info(f"Notification response: {response.status_code} {response.text}")
+        except Exception as e:
+            logger.error(f"Failed to send verification email: {e}")  # ← This will show you the real error
+
         return user
+
+    # NEW — verify email token and activate account
+    @staticmethod
+    def verify_email_token(token):
+        from django.contrib.auth.models import User
+        from django.core import signing
+
+        try:
+            user_pk = signing.loads(
+                token,
+                salt    = 'email-verification',
+                max_age = 3600,   # 1 hour
+            )
+            user = User.objects.get(pk=user_pk, is_active=False)
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+            return user
+        except (signing.BadSignature, signing.SignatureExpired, User.DoesNotExist):
+            return None
 
     # ── Topic 7.2b — session rotation on login ────────
     @staticmethod

@@ -9,4 +9,6 @@ urlpatterns = [
     path('users/forgot-password/',      views.api_forgot_password,   name='api-forgot-password'),
     path('users/reset-password/',       views.api_reset_password,    name='api-reset-password'),
     path('users/employees/emails/',     views.api_employee_emails,   name='api-employee-emails'),
+    path('users/verify-email/',         views.api_verify_email,     name='api-verify-email'),
+
 ]
