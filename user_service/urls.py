@@ -6,7 +6,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # ── JWT Auth ──────────────────────────────────────
-    path('api/v1/auth/token/',         TokenObtainPairView.as_view(), name='token_obtain'),
     path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(),    name='token_refresh'),
 
     # ── User API ──────────────────────────────────────

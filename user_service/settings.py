@@ -4,7 +4,7 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-user-service-local-key')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'serviceday-local-dev-secret-key-2026')
 DEBUG       = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 

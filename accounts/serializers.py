@@ -1,6 +1,21 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User, Group
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['groups']   = list(user.groups.values_list('name', flat=True))
+        token['username'] = user.username
+        return token
+
+    def validate(self, attrs):
+        data             = super().validate(attrs)
+        data['groups']   = list(self.user.groups.values_list('name', flat=True))
+        data['username'] = self.user.username
+        data['role']     = 'admin' if self.user.is_staff else 'employee'
+        return data
 
 class UserSerializer(serializers.ModelSerializer):
     """Read-only serializer for user data."""

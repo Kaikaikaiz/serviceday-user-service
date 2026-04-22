@@ -4,11 +4,14 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-from .serializers import UserSerializer, RegisterSerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer, UserSerializer, RegisterSerializer
 from accounts.services.account_service import AccountService
 from django.conf import settings
 import requests
 
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
