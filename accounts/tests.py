@@ -70,6 +70,112 @@ class AccountServiceUnitTest(TestCase):
         )
         self.assertIsNotNone(error)
 
+    def test_empty_username_is_rejected(self):
+        """Username cannot be blank."""
+        error = self.svc.validate_registration(
+            '', 'test@test.com', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_username_with_spaces_is_rejected(self):
+        """Username cannot contain spaces."""
+        error = self.svc.validate_registration(
+            'test user', 'test@test.com', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_username_too_short_is_rejected(self):
+        """Username must be at least 3 characters."""
+        error = self.svc.validate_registration(
+            'ab', 'test@test.com', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_username_case_insensitive_duplicate(self):
+        """'Admin' and 'admin' should be treated as duplicates."""
+        User.objects.create_user('Admin', password='Pass1234')
+        error = self.svc.validate_registration(
+            'admin', 'other@test.com', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    # --- Email validation ---
+
+    def test_empty_email_is_rejected(self):
+        """Email field cannot be blank."""
+        error = self.svc.validate_registration(
+            'testuser', '', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_invalid_email_format_is_rejected(self):
+        """Email must contain @ and a domain."""
+        error = self.svc.validate_registration(
+            'testuser', 'notanemail', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_email_missing_domain_is_rejected(self):
+        """Email like user@ should be invalid."""
+        error = self.svc.validate_registration(
+            'testuser', 'user@', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    def test_duplicate_email_is_rejected(self):
+        """Two accounts cannot share the same email."""
+        User.objects.create_user(
+            'existinguser', email='taken@test.com', password='Pass1234'
+        )
+        error = self.svc.validate_registration(
+            'newuser', 'taken@test.com', 'Pass1234', 'Pass1234'
+        )
+        self.assertIsNotNone(error)
+
+    # --- Password edge cases ---
+
+    def test_empty_password_is_rejected(self):
+        """Password cannot be blank."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', '', ''
+        )
+        self.assertIsNotNone(error)
+
+    def test_password_all_numbers_is_rejected(self):
+        """Password like '12345678' has no letter or uppercase."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', '12345678', '12345678'
+        )
+        self.assertIsNotNone(error)
+
+    def test_password_all_uppercase_no_number_rejected(self):
+        """Password like 'PASSWORD' has no digit."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', 'PASSWORD', 'PASSWORD'
+        )
+        self.assertIsNotNone(error)
+
+    def test_password_exactly_minimum_length_accepted(self):
+        """Password of exactly 8 characters meeting all rules is valid."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', 'Pass123!', 'Pass123!'
+        )
+        self.assertIsNone(error)
+
+    def test_password_with_special_characters_accepted(self):
+        """Special characters in password should be allowed."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', 'P@ssw0rd!', 'P@ssw0rd!'
+        )
+        self.assertIsNone(error)
+
+    def test_password_whitespace_only_is_rejected(self):
+        """Password made of only spaces should be invalid."""
+        error = self.svc.validate_registration(
+            'testuser', 'test@test.com', '        ', '        '
+        )
+        self.assertIsNotNone(error)
+
 
 # ─────────────────────────────────────────────────────────────
 # 13.2 API Tests
