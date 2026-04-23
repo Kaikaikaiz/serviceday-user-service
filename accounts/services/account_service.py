@@ -5,6 +5,7 @@ from django.core import signing
 
 from user_service import settings
 import requests
+import re
 
 class AccountService:
 
@@ -13,22 +14,41 @@ class AccountService:
 
     @staticmethod
     def validate_registration(username, email, password1, password2):
+        # ── Field presence ──────────────────────────────────────
         if not all([username, email, password1, password2]):
             return "All fields are required."
+
+        # ── Username rules ──────────────────────────────────────
+        if len(username) < 3:                               # NEW: min length
+            return "Username must be at least 3 characters."
         if len(username) > 150:
             return "Username must be 150 characters or fewer."
+        if ' ' in username:                                 # NEW: no spaces
+            return "Username cannot contain spaces."
+
+        # ── Email format ────────────────────────────────────────
+        email_regex = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'       # NEW: format check
+        if not re.match(email_regex, email):
+            return "Enter a valid email address."
+
+        # ── Password rules ──────────────────────────────────────
         if password1 != password2:
             return "Passwords do not match."
+        if not password1.strip():                           # NEW: whitespace-only
+            return "Password cannot be blank or whitespace."
         if len(password1) < 8:
             return "Password must be at least 8 characters."
         if not any(c.isupper() for c in password1):
             return "Password must contain at least one uppercase letter."
         if not any(c.isdigit() for c in password1):
             return "Password must contain at least one number."
-        if User.objects.filter(username=username).exists():
+
+        # ── Uniqueness checks ───────────────────────────────────
+        if User.objects.filter(username__iexact=username).exists():  # FIX: case-insensitive
             return "Username already taken."
         if User.objects.filter(email=email).exists():
             return "Email already registered."
+
         return None
 
     @staticmethod
@@ -77,26 +97,7 @@ class AccountService:
 
         return user
 
-    # NEW — verify email token and activate account
-    @staticmethod
-    def verify_email_token(token):
-        from django.contrib.auth.models import User
-        from django.core import signing
-
-        try:
-            user_pk = signing.loads(
-                token,
-                salt    = 'email-verification',
-                max_age = 3600,   # 1 hour
-            )
-            user = User.objects.get(pk=user_pk, is_active=False)
-            user.is_active = True
-            user.save(update_fields=['is_active'])
-            return user
-        except (signing.BadSignature, signing.SignatureExpired, User.DoesNotExist):
-            return None
-
-    # ── Topic 7.2b — session rotation on login ────────
+    #— session rotation on login ────────
     @staticmethod
     def login_user(request, username, password):
         user = authenticate(request, username=username, password=password)
