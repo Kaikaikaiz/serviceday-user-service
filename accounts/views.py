@@ -132,6 +132,17 @@ def api_user_list(request):
     users = User.objects.filter(is_active=True)
     return Response(UserSerializer(users, many=True).data)
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def api_user_detail(request, pk):
+    try:
+        user = User.objects.get(pk=pk, is_active=True)
+        return Response(UserSerializer(user).data)
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

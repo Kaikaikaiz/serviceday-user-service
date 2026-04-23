@@ -11,5 +11,6 @@ urlpatterns = [
     path('users/reset-password/',       views.api_reset_password,    name='api-reset-password'),
     path('users/employees/emails/',     views.api_employee_emails,   name='api-employee-emails'),
     path('users/verify-email/',         views.api_verify_email,     name='api-verify-email'),
+    path('users/<int:pk>/',             views.api_user_detail,      name='user_detail'),
 
 ]
