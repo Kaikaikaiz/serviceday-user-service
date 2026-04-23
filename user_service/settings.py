@@ -73,7 +73,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 LOGIN_URL = 'login'
 
-# ── Topic 7.2 — Secure session settings ──────────────────────
+#  — Secure session settings ──────────────────────
 SESSION_COOKIE_AGE             = 60 * 60 * 8
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_HTTPONLY        = True

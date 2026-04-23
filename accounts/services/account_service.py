@@ -42,7 +42,7 @@ class AccountService:
         user.groups.add(employee_group)
         return user
 
-    # ── Topic 7.2b — session rotation on login ────────
+    #— session rotation on login ────────
     @staticmethod
     def login_user(request, username, password):
         user = authenticate(request, username=username, password=password)
