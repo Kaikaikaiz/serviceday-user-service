@@ -134,7 +134,7 @@ def api_user_list(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
+@permission_classes([IsAuthenticated])
 def api_employee_emails(request):
     emails = list(
         User.objects

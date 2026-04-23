@@ -82,6 +82,7 @@ CSRF_COOKIE_HTTPONLY           = True
 # ── Topic 8 — REST Framework ──────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'user_service.authentication.StatelessJWTAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ),
