@@ -4,7 +4,7 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-user-service-local-key')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'serviceday-local-dev-secret-key-2026')
 DEBUG       = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 
@@ -96,3 +96,10 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS':  True,
 }
+
+NOTIFICATION_SERVICE_URL = os.environ.get(
+    'NOTIFICATION_SERVICE_URL', 'http://127.0.0.1:8004'
+)
+GATEWAY_URL = os.environ.get(
+    'GATEWAY_URL', 'http://127.0.0.1:8000'
+)
