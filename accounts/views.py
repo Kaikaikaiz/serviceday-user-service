@@ -147,9 +147,9 @@ def api_user_detail(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_employee_emails(request):
-    emails = list(
-        User.objects
-        .filter(is_active=True, is_staff=False)
-        .values_list('email', flat=True)
-    )
+    ids = request.query_params.getlist('ids')  # ← filter by specific ids
+    qs  = User.objects.filter(is_active=True, is_staff=False)
+    if ids:
+        qs = qs.filter(pk__in=ids)
+    emails = list(qs.values_list('email', flat=True))
     return Response({'emails': emails})
