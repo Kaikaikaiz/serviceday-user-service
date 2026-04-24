@@ -151,3 +151,14 @@ class AccountService:
             return User.objects.get(email=email)
         except User.DoesNotExist:
             return None
+
+    @staticmethod
+    def verify_email_token(token):
+        try:
+            user_pk = signing.loads(token, salt='email-verification', max_age=3600)
+            user = User.objects.get(pk=user_pk)
+            user.is_active = True
+            user.save()
+            return user
+        except (signing.BadSignature, signing.SignatureExpired, User.DoesNotExist):
+            return None
