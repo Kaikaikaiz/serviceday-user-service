@@ -147,9 +147,22 @@ def api_user_detail(request, pk):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def api_employee_emails(request):
-    ids = request.query_params.getlist('ids')  # ← filter by specific ids
+    ids = request.query_params.getlist('ids')
     qs  = User.objects.filter(is_active=True, is_staff=False)
     if ids:
         qs = qs.filter(pk__in=ids)
-    emails = list(qs.values_list('email', flat=True))
-    return Response({'emails': emails})
+
+    # return both email and name
+    users = list(qs.values('email', 'first_name', 'last_name', 'username'))
+    emails = [u['email'] for u in users if u['email']]
+
+    # also return user details for name lookup
+    user_map = {
+        u['email']: f"{u['first_name']} {u['last_name']}".strip() or u['username']
+        for u in users if u['email']
+    }
+
+    return Response({
+        'emails':   emails,
+        'user_map': user_map, 
+    })
