@@ -153,7 +153,7 @@ def api_employee_emails(request):
         qs = qs.filter(pk__in=ids)
 
     # return both email and name
-    users = list(qs.values('email', 'first_name', 'last_name', 'username'))
+    users = list(qs.values('id', 'email', 'first_name', 'last_name', 'username'))
     emails = [u['email'] for u in users if u['email']]
 
     # also return user details for name lookup
@@ -162,7 +162,13 @@ def api_employee_emails(request):
         for u in users if u['email']
     }
 
+    user_id_map = {
+        u['email']: u['id']
+        for u in users if u['email']
+    }
+
     return Response({
-        'emails':   emails,
-        'user_map': user_map, 
+        "emails":      emails,
+        "user_map":    user_map,
+        "user_id_map": user_id_map,  # ✅ add this
     })
