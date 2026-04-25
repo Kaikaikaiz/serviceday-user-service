@@ -103,3 +103,5 @@ NOTIFICATION_SERVICE_URL = os.environ.get(
 GATEWAY_URL = os.environ.get(
     'GATEWAY_URL', 'http://127.0.0.1:8000'
 )
+
+CSRF_TRUSTED_ORIGINS = ['https://serviceday-user-service.onrender.com']
