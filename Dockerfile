@@ -5,4 +5,4 @@ RUN pip install -r requirements.txt
 COPY . .
 CMD sh -c "python manage.py migrate && \
            python manage.py create_admin && \
-           gunicorn notification_service.wsgi:application --bind 0.0.0.0:${PORT:-8000}"
+           python manage.py runserver 0.0.0.0:${PORT:-8000}"
