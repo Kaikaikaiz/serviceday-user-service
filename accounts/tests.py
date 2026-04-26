@@ -303,3 +303,151 @@ class UserIntegrationTest(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn('access', resp.data)
         self.assertIn('refresh', resp.data)
+
+    def test_register_saves_correct_email_and_name(self):
+        """DB user has the exact email and name submitted."""
+        self.client.post(
+            '/api/v1/users/register/',
+            {
+                'username':   'datauser',
+                'email':      'data@test.com',
+                'first_name': 'Data',
+                'last_name':  'User',
+                'password1':  'Pass1234',
+                'password2':  'Pass1234',
+            },
+            format='json',
+        )
+        user = User.objects.get(username='datauser')
+        self.assertEqual(user.email, 'data@test.com')
+        self.assertEqual(user.first_name, 'Data')
+        self.assertEqual(user.last_name, 'User')
+
+    # ── NEW: is_active=False on register ──────
+
+    def test_register_sets_user_inactive(self):
+        """Newly registered user is inactive until email verified."""
+        self.client.post(
+            '/api/v1/users/register/',
+            {
+                'username':   'inactiveuser',
+                'email':      'inactive@test.com',
+                'first_name': 'Inactive',
+                'last_name':  'User',
+                'password1':  'Pass1234',
+                'password2':  'Pass1234',
+            },
+            format='json',
+        )
+        user = User.objects.get(username='inactiveuser')
+        self.assertFalse(user.is_active)
+
+    def test_inactive_user_cannot_login(self):
+        """User with is_active=False cannot get a JWT token."""
+        User.objects.create_user(
+            'inactiveuser',
+            email='inactive@test.com',
+            password='Pass1234',
+            is_active=False,   # simulates pre-verification state
+        )
+        resp = self.client.post(
+            '/api/v1/auth/token/',
+            {'username': 'inactiveuser', 'password': 'Pass1234'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # ── NEW: failed register does NOT touch DB ─
+
+    def test_failed_register_does_not_create_user(self):
+        """Bad password means no user is saved in the DB."""
+        resp = self.client.post(
+            '/api/v1/users/register/',
+            {
+                'username':   'ghostuser',
+                'email':      'ghost@test.com',
+                'first_name': 'Ghost',
+                'last_name':  'User',
+                'password1':  'weak',
+                'password2':  'weak',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='ghostuser').exists())
+
+    def test_duplicate_username_does_not_create_second_user(self):
+        """Duplicate username returns 400 and only one user exists in DB."""
+        User.objects.create_user('emp1', email='emp1@test.com', password='Pass1234')
+        resp = self.client.post(
+            '/api/v1/users/register/',
+            {
+                'username':   'emp1',
+                'email':      'other@test.com',
+                'first_name': 'Other',
+                'last_name':  'User',
+                'password1':  'Pass1234',
+                'password2':  'Pass1234',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(User.objects.filter(username='emp1').count(), 1)
+
+    def test_duplicate_email_does_not_create_user(self):
+        """Duplicate email returns 400 and no new user in DB."""
+        User.objects.create_user('first', email='taken@test.com', password='Pass1234')
+        resp = self.client.post(
+            '/api/v1/users/register/',
+            {
+                'username':   'second',
+                'email':      'taken@test.com',
+                'first_name': 'Second',
+                'last_name':  'User',
+                'password1':  'Pass1234',
+                'password2':  'Pass1234',
+            },
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='second').exists())
+
+    # ── NEW: token refresh ────────────────────
+
+    def test_refresh_token_works(self):
+        """Refresh token returns a new access token."""
+        User.objects.create_user('refreshuser', password='Pass1234', is_active=True)
+        token_resp = self.client.post(
+            '/api/v1/auth/token/',
+            {'username': 'refreshuser', 'password': 'Pass1234'},
+            format='json',
+        )
+        refresh = token_resp.data.get('refresh')
+        resp = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': refresh},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('access', resp.data)
+
+    # ── NEW: me endpoint reflects DB ─────────
+
+    def test_me_endpoint_returns_correct_db_data(self):
+        """Me endpoint returns the exact data stored in DB."""
+        g, _ = Group.objects.get_or_create(name='Employee')
+        user = User.objects.create_user(
+            'meuser',
+            email='me@test.com',
+            first_name='Me',
+            last_name='User',
+            password='Pass1234',
+            is_active=True,
+        )
+        user.groups.add(g)
+        token = get_token(self.client, 'meuser')
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        resp = self.client.get('/api/v1/users/me/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['username'], 'meuser')
+        self.assertEqual(resp.data['email'], 'me@test.com')
