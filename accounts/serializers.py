@@ -37,8 +37,16 @@ class RegisterSerializer(serializers.Serializer):
     email      = serializers.EmailField()
     first_name = serializers.CharField(max_length=100)
     last_name  = serializers.CharField(max_length=100)
-    password1  = serializers.CharField(min_length=8, write_only=True)
-    password2  = serializers.CharField(min_length=8, write_only=True)
+    password1 = serializers.CharField(
+        min_length=8,
+        write_only=True,
+        error_messages={'min_length': 'Password must be at least 8 characters long.'}
+    )
+    password2 = serializers.CharField(
+        min_length=8,
+        write_only=True,
+        error_messages={'min_length': 'Password must be at least 8 characters long.'}
+    )
 
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
@@ -52,11 +60,11 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate(self, data):
         if data['password1'] != data['password2']:
-            raise serializers.ValidationError({"password2": "Passwords do not match."})
+            raise serializers.ValidationError({"Password": "Passwords do not match."})
         if not any(c.isupper() for c in data['password1']):
-            raise serializers.ValidationError({"password1": "Password must contain at least one uppercase letter."})
+            raise serializers.ValidationError({"Password": "Password must contain at least one uppercase letter."})
         if not any(c.isdigit() for c in data['password1']):
-            raise serializers.ValidationError({"password1": "Password must contain at least one number."})
+            raise serializers.ValidationError({"Password": "Password must contain at least one number."})
         return data
 
 
